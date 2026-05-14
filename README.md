@@ -1,290 +1,149 @@
-# Proyecto DevOps - Innovatech Chile
+# Innovatech — Despliegue (DevOps)
 
-Sistema de microservicios containerizado con Docker para gestión de Despachos y Ventas de Innovatech Chile.
+Monorepo con frontend React (Vite), dos APIs REST en Spring Boot (despachos y ventas), MySQL y orquestación con Docker Compose. Incluye flujos de CI/CD en GitHub Actions hacia AWS (ECR + EC2 vía SSM).
 
-##  Descripción del Proyecto
-
-Este proyecto implementa una solución DevOps completa con:
-- **2 Microservicios Backend** (Spring Boot): API REST para Despachos y Ventas
-- **1 Frontend** (React + Vite): Interfaz de usuario
-- **Base de Datos**: MySQL 8.0
-- **Orquestación**: Docker Compose
-- **CI/CD**: GitHub Actions (automatización de build y deploy)
-
-## Arquitectura
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    Internet (Public)                 │
-└────────────────────────┬────────────────────────────┘
-                         │
-                    ┌────▼─────┐
-                    │ Frontend  │ (Puerto 3000)
-                    │ (Nginx)   │
-                    └────┬─────┘
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-   ┌────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
-   │ Backend    │ │ Backend     │ │   MySQL     │
-   │ Despachos  │ │ Ventas      │ │   Database  │
-   │ (8081)     │ │ (8082)      │ │ (3306)      │
-   └────────────┘ └─────────────┘ └─────────────┘
-   
-   (Red Interna: innovatech-network)
-```
-
-## Inicio Rápido
-
-### Requisitos Previos
-- Docker Desktop instalado y ejecutándose
-- Git
-- Mínimo 4GB RAM disponible
-
-### Instalación y Levantamiento
-
-1. **Clonar el repositorio**
-```bash
-git clone https://github.com/tu-usuario/proyecto-devops.git
-cd proyecto-devops
-```
-
-2. **Levantar todos los servicios**
-```bash
-docker-compose up -d
-```
-
-3. **Esperar a que los servicios inicien** (~30 segundos)
-```bash
-docker-compose ps
-```
-
-4. **Verificar que todo funciona**
-- Frontend: http://localhost:3000
-- Backend Despachos: http://localhost:8081
-- Backend Ventas: http://localhost:8082
-- MySQL: localhost:3306
-
-### Detener los servicios
-```bash
-docker-compose down
-```
-
-## Estructura del Proyecto
-
-```
-proyecto-devops/
-├── back-Despachos_SpringBoot/
-│   └── Springboot-API-REST-DESPACHO/
-│       ├── Dockerfile
-│       ├── README.md
-│       ├── pom.xml
-│       ├── src/
-│       └── application.properties
-├── back-Ventas_SpringBoot/
-│   └── Springboot-API-REST/
-│       ├── Dockerfile
-│       ├── README.md
-│       ├── pom.xml
-│       ├── src/
-│       └── application.properties
-├── front_despacho/
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── README.md
-│   ├── package.json
-│   ├── vite.config.js
-│   └── src/
-├── docker-compose.yml
-└── README.md (este archivo)
-```
-
-## Docker & Docker Compose
-
-### Dockerfiles (Multi-Stage)
-
-Cada backend usa **multi-stage build** para optimizar:
-- **Stage 1 (builder)**: Compila con Maven (pesado)
-- **Stage 2 (runtime)**: Ejecuta JAR con JRE (ligero)
-
-**Ventajas:**
-- Imágenes más pequeñas (~200MB vs 1GB)
-- Mayor seguridad (sin herramientas de compilación en producción)
-- Mejor rendimiento de despliegue
-
-### Seguridad en Dockerfiles
-
--  Usuario no-root (`appuser`) - evita ataques de escalamiento de privilegios
--  Imágenes base slim (alpine) - menos superficie de ataque
--  Health checks - monitoreo automático de servicios
-
-### Variables de Entorno
-
-Por defecto (desarrollo local):
-```
-MYSQL_DATABASE: innovatech_db
-MYSQL_USER: admin
-MYSQL_PASSWORD: admin123
-DB_ENDPOINT: mysql
-DB_PORT: 3306
-```
-
-En **AWS RDS** (producción):
-```
-DB_ENDPOINT: mydb.xxxxx.rds.amazonaws.com
-DB_PORT: 3306
-(Especificar en GitHub Secrets o variables de entorno)
-```
-
-## Persistencia de Datos
-
-### Volúmenes Docker
-
-```yaml
-volumes:
-  mysql_data:
-    driver: local
-    mount_path: /var/lib/mysql
-```
-
-**¿Qué sucede si reinicio un contenedor?**
-- Los datos persisten en el volumen `mysql_data`
-- La base de datos NO se pierde
-
-##  Comunicación entre Servicios
-
-### Red Interna (innovatech-network)
-
-Los servicios se comunican por nombre DNS interno:
-
-```
-Frontend → Backend-Despachos: http://backend-despachos:8080
-Frontend → Backend-Ventas:    http://backend-ventas:8080
-Backends → MySQL:             jdbc:mysql://mysql:3306/innovatech_db
-```
-
-### Puertos Mapeados
-
-| Servicio | Puerto Interno | Puerto Externo |
-|----------|----------------|----------------|
-| Frontend | 80 (Nginx) | 3000 |
-| Backend Despachos | 8080 | 8081 |
-| Backend Ventas | 8080 | 8082 |
-| MySQL | 3306 | 3306 |
-
-## Comandos Útiles
-
-```bash
-# Ver estado de contenedores
-docker-compose ps
-
-# Ver logs de un servicio
-docker-compose logs backend-despachos
-docker-compose logs -f mysql  # -f = seguir en tiempo real
-
-# Ejecutar comando dentro de un contenedor
-docker-compose exec backend-despachos bash
-
-# Reconstruir imágenes (si cambias código)
-docker-compose build
-
-# Reiniciar un servicio
-docker-compose restart backend-ventas
-
-# Limpiar todo (volúmenes, imágenes, contenedores)
-docker-compose down -v
-```
-
-## Seguridad
-
-### Mejores Prácticas Implementadas
-
-1. **Contenedores sin root**: Todos usan usuario `appuser`
-2. **Imágenes minimales**: Alpine/Slim para reducir vulnerabilidades
-3. **Health checks**: Monitoreo automático de servicios
-4. **Redes internas**: Base de datos NO expuesta a Internet
-5. **Secrets en GitHub**: Credenciales AWS encriptadas
-
-## CI/CD con GitHub Actions
-
-### Pipeline (cuando esté configurado)
-
-```
-1. Push a rama 'deploy'
-   ↓
-2. GitHub Actions: Compilar + Crear imágenes Docker
-   ↓
-3. Publicar en Docker Hub
-   ↓
-4. Conectar a EC2 por SSH
-   ↓
-5. Descargar imágenes nuevas
-   ↓
-6. Ejecutar docker-compose up
-   ↓
-7. Sistema actualizado en producción
-```
-
-## Testing Local
-
-### Verificar que Frontend se conecta a Backend
-
-```bash
-# 1. Ir a http://localhost:3000 en el navegador
-# 2. Abrir DevTools (F12)
-# 3. Ir a pestaña Network
-# 4. Realizar una acción que haga request al backend
-# 5. Verificar que la request llega a http://backend-despachos:8080 o http://backend-ventas:8080
-```
-
-### Verificar conectividad de Backend a MySQL
-
-```bash
-docker-compose exec backend-despachos bash
-# Dentro del contenedor:
-curl http://localhost:8080/health  # o tu endpoint de health check
-```
-
-## Documentación Adicional
-
-- [Backend Despachos](./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/README.md)
-- [Backend Ventas](./back-Ventas_SpringBoot/Springboot-API-REST/README.md)
-- [Frontend](./front_despacho/README.md)
-
-## Equipo
-
-- **Integrante 1**: Responsable de Dockerization y CI/CD
-- **Integrante 2**: Responsable de Arquitectura y Presentación
-
-## Cronograma
-
-- **Semana X**: Entrega del Encargo (Dockerfiles, docker-compose, GitHub Actions)
-- **Semana X+1**: Presentación técnica y defensa
-
-## Próximos Pasos
-
-1. Dockerizar Frontend y Backends
-2. Configurar docker-compose
-3. Implementar GitHub Actions workflow
-4. Desplegar en AWS EC2
-5. Presentación técnica
-
-##  Preguntas Frecuentes
-
-**P: ¿Por qué multi-stage en Dockerfile?**
-A: Reduce el tamaño final de la imagen eliminando herramientas de compilación que no necesita en producción.
-
-**P: ¿Qué pasa si MySQL falla?**
-A: Los backends reintentan conectarse automáticamente gracias a `depends_on` y health checks.
-
-**P: ¿Cómo agrego una nueva variable de entorno?**
-A: Edita `docker-compose.yml` en la sección `environment:` del servicio y redeploy.
-
-##  Soporte
-
-Para dudas técnicas, contactar a los integrantes del equipo o revisar la [documentación oficial de Docker](https://docs.docker.com/).
+**Repositorio:** [Innovatech — código en GitHub](https://github.com/IgnacioLondono/innovatech-proyecto-deploy)
 
 ---
 
-**Última actualización**: Mayo 2026
-**Versión**: 1.0
+## Contenido del repositorio
+
+| Componente | Descripción |
+|------------|-------------|
+| `front_despacho/` | SPA React + Vite, servida con Nginx en contenedor |
+| `back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/` | API de despachos |
+| `back-Ventas_SpringBoot/Springboot-API-REST/` | API de ventas |
+| `docker-compose.yml` | MySQL + backends + frontend en red `innovatech2-network` |
+| `.github/workflows/` | Build, push a ECR y despliegue en EC2 (rama `deploy`) |
+
+---
+
+## Arquitectura local (Docker Compose)
+
+```
+                    ┌─────────────────┐
+                    │   Navegador     │
+                    └────────┬────────┘
+                             │ localhost
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+   ┌───────────┐      ┌─────────────┐     ┌─────────────┐
+   │ Frontend  │      │ API         │     │ API         │
+   │ Nginx :80 │      │ Despachos   │     │ Ventas      │
+   │ → :3000   │      │ → :8081     │     │ → :8082     │
+   └─────┬─────┘      └──────┬──────┘     └──────┬──────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │ MySQL 8.0       │
+                    │ puerto 3306     │
+                    └─────────────────┘
+              red Docker: innovatech2-network
+```
+
+Dentro de la red Docker los servicios se resuelven por nombre: `mysql`, `backend-despachos`, `backend-ventas`, `frontend-despacho`.
+
+---
+
+## Requisitos
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (incluye `docker compose`)
+- Git
+- ~4 GB de RAM libres recomendados para levantar todos los contenedores
+
+---
+
+## Inicio rápido
+
+```bash
+git clone https://github.com/IgnacioLondono/innovatech-proyecto-deploy.git
+cd innovatech-proyecto-deploy
+docker compose up -d --build
+```
+
+Comprobar estado:
+
+```bash
+docker compose ps
+```
+
+| Servicio | URL / host |
+|----------|------------|
+| Frontend | http://localhost:3000 |
+| API Despachos | http://localhost:8081 |
+| API Ventas | http://localhost:8082 |
+| MySQL | `localhost:3306` (usuario `admin` / BD `innovatech_db` según `docker-compose.yml`) |
+
+Documentación OpenAPI (Swagger UI) suele estar en rutas tipo `/swagger-ui.html` según cada API.
+
+Detener y opcionalmente borrar volúmenes:
+
+```bash
+docker compose down
+docker compose down -v   # elimina datos de MySQL en el volumen
+```
+
+---
+
+## Estructura de carpetas
+
+```
+innovatech-proyecto-deploy/
+├── .github/workflows/          # deploy-front, deploy-despachos, deploy-ventas
+├── back-Despachos_SpringBoot/
+│   └── Springboot-API-REST-DESPACHO/
+├── back-Ventas_SpringBoot/
+│   └── Springboot-API-REST/
+├── front_despacho/
+├── docker-compose.yml
+└── README.md
+```
+
+---
+
+## Variables de entorno
+
+En local, credenciales y JDBC se definen en `docker-compose.yml` (`MYSQL_*`, `SPRING_DATASOURCE_*`). Los `application.properties` de Spring permiten sobreescritura con variables (`DB_ENDPOINT`, `DB_PORT`, etc.) para entornos como RDS.
+
+**Producción:** no versiones secretos reales; usa GitHub Secrets y variables en el servidor o en AWS.
+
+---
+
+## CI/CD (GitHub Actions)
+
+Los workflows se disparan con **push a la rama `deploy`** y rutas filtradas por carpeta:
+
+- `front_despacho/**` → build, push a ECR y comando SSM en instancia de frontend
+- Cambios bajo cada backend → pipeline equivalente para esa API
+
+Secrets típicos: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (si aplica), `AWS_REGION`, URLs de ECR, IDs de instancia EC2, etc. (ver cada YAML en `.github/workflows/`).
+
+---
+
+## Comandos útiles
+
+```bash
+docker compose logs -f backend-despachos
+docker compose logs -f mysql
+docker compose build --no-cache
+docker compose restart backend-ventas
+```
+
+---
+
+## Documentación por módulo
+
+- [Backend Despachos](back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/README.md)
+- [Backend Ventas](back-Ventas_SpringBoot/Springboot-API-REST/README.md)
+- [Frontend](front_despacho/README.md)
+
+---
+
+## Licencia y uso
+
+Proyecto académico / Innovatech. Ajusta licencia y créditos según lo exija tu institución o equipo.
+
+---
+
+*Última revisión del README: mayo de 2026.*
